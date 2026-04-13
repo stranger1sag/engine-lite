@@ -1,3 +1,4 @@
 #engine-lite
 .vscode/*
 main.exe
+glad.c
