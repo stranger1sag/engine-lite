@@ -1,32 +1,30 @@
 #include <SDL2/SDL.h>
 #include <glad/glad.h>
 #include <stdio.h>
+#include "include/Shader.h"
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
 
-const char* vertexShaderSource = 
-    "#version 330 core\n"
-    "layout (location = 0) in vec3 aPos;\n"
-    "void main()\n"
-    "{\n"
-    "   gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
-    "}\0";
-
-const char* fragmentShaderSource = 
-    "#version 330 core\n"
-    "out vec4 FragColor;\n"
-    "void main()\n"
-    "{\n"
-    "   FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
-    "}\n\0";
-
 float vertices[] = {
-    -0.5f, -0.5f, 0.0f,
-     0.5f, -0.5f, 0.0f,
-     0.0f,  0.5f, 0.0f
+    -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f,
+    -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f,
+     0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 1.0f
 };
-int main(int argc, char* argv[]) {
+unsigned int indices[] = {
+    0, 1, 2,
+    2, 1, 3
+};
+
+void move(Shader& shader){
+    float time = SDL_GetTicks() / 1000.0f;
+    float xoffset = sin(time) * 0.5f;
+    float yoffset = cos(time) * 0.5f;
+    shader.setFloat("xoffset", xoffset);
+    shader.setFloat("yoffset", yoffset);
+}
+int main(int argc , char* argv[] ) {
     // 初始化 SDL
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         printf("SDL_Init Error: %s\n", SDL_GetError());
@@ -75,6 +73,11 @@ int main(int argc, char* argv[]) {
 
     // 输出 OpenGL 版本
     printf("OpenGL 版本: %s\n", glGetString(GL_VERSION));
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    // glEnable(GL_CULL_FACE);
+    // glCullFace(GL_FRONT);
+    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+
     unsigned int VAO;
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
@@ -84,24 +87,22 @@ int main(int argc, char* argv[]) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    unsigned int vertexShader;
-    vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader,1,&vertexShaderSource,NULL);
-    glCompileShader(vertexShader);
+    unsigned int EBO;
+    glGenBuffers(1, &EBO);
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    unsigned int fragmentShader;
-    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader,1,&fragmentShaderSource,NULL);
-    glCompileShader(fragmentShader);
+    const char* vShaderPath = "../shader_src/normal.vs";
+    const char* fShaderPath = "../shader_src/normal.fs";
 
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram,vertexShader);
-    glAttachShader(shaderProgram,fragmentShader);
-    glLinkProgram(shaderProgram);
+    Shader shader(vShaderPath, fShaderPath);
 
-    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,3*sizeof(float),(void*)0);
+    glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)0);
     glEnableVertexAttribArray(0);
+    
+    glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,6*sizeof(float),(void*)(3*sizeof(float)));
+    glEnableVertexAttribArray(1);
 	// main loop
 	while(true){
 		SDL_Event event;
@@ -112,12 +113,13 @@ int main(int argc, char* argv[]) {
 		// 设置背景色为深蓝色
 		glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-        
+
+        shader.use();//激活着色器
+        move(shader);
         glBindVertexArray(VAO);
-		glUseProgram(shaderProgram);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
-		
-        SDL_GL_SwapWindow(window);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+		SDL_GL_SwapWindow(window);
 	}
 
     // 清理资源
