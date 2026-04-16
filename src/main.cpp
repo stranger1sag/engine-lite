@@ -1,36 +1,93 @@
 #include <SDL2/SDL.h>
 #include <glad/glad.h>
 #include <iostream>
+#include "Components/Components.hpp"
+#include "Vertex.hpp"
 #include <glm/glm.hpp>
+#include <vector>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include "include/Shader.h"
-#define STB_IMAGE_IMPLEMENTATION
-#include "include/stb_image.h"
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/string_cast.hpp>
+#include "include/Shader.hpp"
+#include "include/SourceLoader.hpp"
+#define WINDOW_WIDTH 800.f
+#define WINDOW_HEIGHT 800.f
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 800
 
-float vertices[] = {
-    -0.5f, -0.5f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-     0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f,
-    -0.5f,  0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f,
-     0.5f,  0.5f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f
-};
-unsigned int indices[] = {
-    0, 1, 2,
-    2, 1, 3
+std::vector<Transform> transforms = {
+    {Vector3f(100,100,0), Vector2f(600,600), Vector2f::ONE, 0}, 
+    //{Vector3f(200,200,0), Vector2f(100,100), Vector2f::ONE, 0},
+    //{Vector3f(400,400,0), Vector2f(100,100), Vector2f::ONE, 0},
+    //{Vector3f(300,550,0), Vector2f(100,100), Vector2f::ONE, 0},
 };
 
-void move(Shader &shader)
+void basicRender(GLuint VAO, GLuint VBO, GLuint EBO,Shader shader)
 {
-    float time = SDL_GetTicks() / 1000.0f;
-    float xoffset = sin(time) * 0.5f;
-    float yoffset = cos(time) * 0.5f;
-    shader.setFloat("xoffset", xoffset);
-    shader.setFloat("yoffset", yoffset);
+
+    static Vector2f quad[4] = {
+        {-0.5f, -0.5f},// left bottom
+        { 0.5f, -0.5f},// right bottom
+        { 0.5f,  0.5f},// right top
+        {-0.5f,  0.5f}// left top
+    };
+    static Vector2f texcoords[4] = {
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+        {0.0f, 1.0f}
+    };
+    std::vector<Vertex> outVertices;
+    std::vector<GLuint> indices;
+    for (size_t index = 0; index < transforms.size(); index++)
+    {
+        GLuint base = index * 4;  // 当前quad的起始顶点索引
+    
+        // 第一个三角形: 左下 -> 右下 -> 右上
+        indices.push_back(base + 0);
+        indices.push_back(base + 1);
+        indices.push_back(base + 2);
+        
+        // 第二个三角形: 左下 -> 右上 -> 左上
+        indices.push_back(base + 0);
+        indices.push_back(base + 2);
+        indices.push_back(base + 3);
+
+        Transform t = transforms[index];
+        float cosR = cos(t.rotation);
+        float sinR = sin(t.rotation);
+
+        for (int i = 0; i < 4; i++) {
+            
+            Vector2f p = quad[i];
+
+            p *= t.scale;
+
+            Vector2f r;
+            r.x = p.x * cosR - p.y * sinR;
+            r.y = p.x * sinR + p.y * cosR;
+
+            r += t.position.xy;
+            r = Vector2f(r.x + texcoords[i].x * t.size.x, r.y + texcoords[i].y * t.size.y);
+
+            outVertices.push_back({r.x , r.y, 0, texcoords[i].x, texcoords[i].y});
+        }
+    }
+
+    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    shader.use();
+    glm::mat4 transform = glm::ortho(0.f, WINDOW_WIDTH, WINDOW_HEIGHT, 0.f, -1.f, 1.f);
+    shader.setMat4("transform", transform);
+    
+    glBindVertexArray(VAO);
+
+   // glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex)*outVertices.size(), outVertices.data(),GL_DYNAMIC_DRAW);
+
+   // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size()*sizeof(GLuint),indices.data(),GL_DYNAMIC_DRAW);
+
+    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
 }
 int main(int argc, char *argv[])
 {
@@ -88,66 +145,33 @@ int main(int argc, char *argv[])
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    const char *vShaderPath = "shader_src/normal.vs";
+    const char *fShaderPath = "shader_src/normal.fs";
 
+    Shader *shader = new Shader(vShaderPath, fShaderPath);
+    SourceLoader *sl = new SourceLoader();
+    sl->loadTexture("texture/floor.png");
+    sl->loadTexture("texture/smile.png");
     // glEnable(GL_CULL_FACE);
     // glCullFace(GL_FRONT);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    unsigned int VAO;
+    GLuint VAO;
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
-
-    unsigned int VBO;
+    GLuint VBO;
     glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    unsigned int EBO;
+    GLuint EBO;
     glGenBuffers(1, &EBO);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    const char *vShaderPath = "shader_src/normal.vs";
-    const char *fShaderPath = "shader_src/normal.fs";
-
-    Shader shader(vShaderPath, fShaderPath);
-
-    // load image texture
-    unsigned int texture;
-    int width, height, nrChannels;
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load("texture/smile.png", &width, &height, &nrChannels, 0);
-
-
-
-    if (data) // 加载成功
-    {
-        glGenTextures(1, &texture);//生成纹理对象
-        glBindTexture(GL_TEXTURE_2D, texture);//绑定纹理对象
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);//设置缩小过滤方式
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);//设置放大过滤方式
-        GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);//生成纹理
-        glGenerateMipmap(GL_TEXTURE_2D);//生成多级渐远纹理
-    }
-    else
-    {
-        std::cout << "Failed to load texture" << std::endl;
-    }
-    stbi_image_free(data);
 
     // vertex attributes
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)0);
     glEnableVertexAttribArray(0);
-    // color attributes
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
     // texture coordinates
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     // main loop
     while (true)
@@ -158,21 +182,9 @@ int main(int argc, char *argv[])
         {
             break;
         }
-        // 设置背景色为深蓝色
-        glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        shader.use(); // 激活着色器
-        glm::mat4 trans(1.0f);
-        trans = glm::scale(trans,glm::vec3(.5f,.5f,.5f));
-        trans = glm::rotate(trans, glm::radians(90.f), glm::vec3(0.f, 0.f, 1.f));
-        shader.setMat4("transform", trans);
-        // move(shader);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        
-        glBindVertexArray(VAO);
-        // should replace the number to sizeof(indices)/sizeof(unsigned int)
-        glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(indices[0]), GL_UNSIGNED_INT, 0);
+        //glrender
+        basicRender(VAO, VBO, EBO, *shader);
+        // glBindTexture(GL_TEXTURE_2D, texture);
 
         SDL_GL_SwapWindow(window);
     }
