@@ -12,7 +12,6 @@ SourceLoader::SourceLoader() {
 SourceLoader::~SourceLoader() {
     
 }
-
 GLuint SourceLoader::loadTexture(const std::string& sourcePath) {
     if (m_textureCache.find(sourcePath) != m_textureCache.end()) {
         return m_textureCache[sourcePath];
@@ -22,6 +21,7 @@ GLuint SourceLoader::loadTexture(const std::string& sourcePath) {
     int width, height, nrChannels;
     // stbi_set_flip_vertically_on_load(true);
     unsigned char *data = stbi_load(sourcePath.c_str(), &width, &height, &nrChannels, 0);
+    //printf("Loading texture: %s (width: %d, height: %d, channels: %d)\n", sourcePath.c_str(), width, height, nrChannels);
     
     if (data) // 加载成功
     {
@@ -34,16 +34,15 @@ GLuint SourceLoader::loadTexture(const std::string& sourcePath) {
         GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
         glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);//生成纹理
         glGenerateMipmap(GL_TEXTURE_2D);//生成多级渐远纹理
+        stbi_image_free(data);
     }
     else
     {
         std::cout << "Failed to load texture" << std::endl;
     }
-    stbi_image_free(data);
     m_textureCache[sourcePath] = texture;
     return texture;
 }
-
 void SourceLoader::loadTextures(const std::vector<std::string> &sourcePaths)
 {
     // stbi_set_flip_vertically_on_load(true);

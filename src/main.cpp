@@ -5,24 +5,30 @@
 #include "Vertex.hpp"
 #include <glm/glm.hpp>
 #include <vector>
+#include <unordered_map>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "include/Shader.hpp"
 #include "include/SourceLoader.hpp"
-#define WINDOW_WIDTH 800.f
-#define WINDOW_HEIGHT 800.f
+#include "include/Game.hpp"
+#include <algorithm>
+#define WINDOW_WIDTH 1920.f
+#define WINDOW_HEIGHT 1080.f
 
+Game game = Game();
 
 std::vector<Transform> transforms = {
     {Vector3f(100,100,0), Vector2f(600,600), Vector2f::ONE, 0}, 
-    //{Vector3f(200,200,0), Vector2f(100,100), Vector2f::ONE, 0},
-    //{Vector3f(400,400,0), Vector2f(100,100), Vector2f::ONE, 0},
-    //{Vector3f(300,550,0), Vector2f(100,100), Vector2f::ONE, 0},
+    {Vector3f(545,250,0), Vector2f(213,200), Vector2f::ONE, 0},
+    {Vector3f(1000,400,0), Vector2f(102,570), Vector2f::ONE, 0},
+    {Vector3f(802,540,0), Vector2f(103,140), Vector2f::ONE, 0},
 };
+
 
 void basicRender(GLuint VAO, GLuint VBO, GLuint EBO,Shader shader)
 {
-
+    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
     static Vector2f quad[4] = {
         {-0.5f, -0.5f},// left bottom
         { 0.5f, -0.5f},// right bottom
@@ -37,9 +43,10 @@ void basicRender(GLuint VAO, GLuint VBO, GLuint EBO,Shader shader)
     };
     std::vector<Vertex> outVertices;
     std::vector<GLuint> indices;
-    for (size_t index = 0; index < transforms.size(); index++)
+    for (size_t index = 0; index < game.m_entities.size(); index++)
     {
         GLuint base = index * 4;  // 当前quad的起始顶点索引
+        GLuint id = game.m_entities[index].OBJid;
     
         // 第一个三角形: 左下 -> 右下 -> 右上
         indices.push_back(base + 0);
@@ -51,7 +58,7 @@ void basicRender(GLuint VAO, GLuint VBO, GLuint EBO,Shader shader)
         indices.push_back(base + 2);
         indices.push_back(base + 3);
 
-        Transform t = transforms[index];
+        Transform t = game.m_transforms[id];
         float cosR = cos(t.rotation);
         float sinR = sin(t.rotation);
 
@@ -70,27 +77,52 @@ void basicRender(GLuint VAO, GLuint VBO, GLuint EBO,Shader shader)
 
             outVertices.push_back({r.x , r.y, 0, texcoords[i].x, texcoords[i].y});
         }
+        if (index == game.m_entities.size()-1 || game.m_textures[id]!=game.m_textures[game.m_entities[index+1].OBJid]) {
+            //printf("Drawing entity %d with texture %d\n", index, game.m_textures[index]);
+            glBindTexture(GL_TEXTURE_2D, game.m_textures[id]);
+            glBindVertexArray(VAO);
+            shader.use();
+            glm::mat4 transform = glm::ortho(0.f, WINDOW_WIDTH, WINDOW_HEIGHT, 0.f, -1.f, 1.f);
+            shader.setMat4("transform", transform);
+
+            glBindBuffer(GL_ARRAY_BUFFER, VBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex)*outVertices.size(), outVertices.data(),GL_DYNAMIC_DRAW);
+
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size()*sizeof(GLuint),indices.data(),GL_DYNAMIC_DRAW);
+
+            glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+            indices.clear();
+            outVertices.clear();
+        }
     }
-
-    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    shader.use();
-    glm::mat4 transform = glm::ortho(0.f, WINDOW_WIDTH, WINDOW_HEIGHT, 0.f, -1.f, 1.f);
-    shader.setMat4("transform", transform);
-    
-    glBindVertexArray(VAO);
-
-   // glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vertex)*outVertices.size(), outVertices.data(),GL_DYNAMIC_DRAW);
-
-   // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size()*sizeof(GLuint),indices.data(),GL_DYNAMIC_DRAW);
-
-    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+}
+void sort()
+{
+    std::string path_list[2] = {"texture/floor.png","texture/smile.png"};
+    for (auto& t: transforms)
+    {
+        Entity e = game.createEntity();
+        game.addTransform(e, t);
+        game.addTexture(e, SourceLoader::loadTexture(path_list[rand() % 2]));
+    }
+    std::vector<std::pair<GLuint, GLuint>> pairs;
+    for (auto& e: game.m_entities)
+    {
+        pairs.emplace_back(e.OBJid, game.m_textures[e.OBJid]);
+    }
+    std::sort(pairs.begin(), pairs.end(), [](auto& a, auto& b) {
+        return a.second < b.second; // 按照纹理ID排序
+    });
+    for(auto& p: pairs)
+    {
+        game.m_entities[p.first] = Entity{p.first};
+        game.m_textures[p.first] = p.second;
+    }
 }
 int main(int argc, char *argv[])
 {
+
     // 初始化 SDL
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
@@ -149,9 +181,7 @@ int main(int argc, char *argv[])
     const char *fShaderPath = "shader_src/normal.fs";
 
     Shader *shader = new Shader(vShaderPath, fShaderPath);
-    SourceLoader *sl = new SourceLoader();
-    sl->loadTexture("texture/floor.png");
-    sl->loadTexture("texture/smile.png");
+    sort();
     // glEnable(GL_CULL_FACE);
     // glCullFace(GL_FRONT);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
