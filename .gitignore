@@ -1,6 +1,7 @@
 #engine-lite
 .vscode/*
 main.exe
-glad.c
+src/glad.c
 ouptut/*
 glm/*
+src/include/stb_image.h
